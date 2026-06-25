@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/reloadlife/cursor-account-switcher/internal/paths"
+	"github.com/reloadlife/cursor-account-switcher/internal/platform"
 	"github.com/reloadlife/cursor-account-switcher/internal/profiles"
 )
 
@@ -20,15 +21,21 @@ var (
 )
 
 func StatusText() string {
-	currentEmail, _ := profiles.CurrentEmail()
+	currentID, _ := profiles.CurrentIdentifier()
 	active := profiles.ActiveAccount()
 	accounts, _ := profiles.ListAccounts()
+	p, _ := platform.CurrentPlatform()
+	platformName := "Cursor"
+	if p != nil {
+		platformName = p.Name
+	}
 
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Cursor Account Switcher"))
+	b.WriteString(titleStyle.Render("Account Switcher"))
 	b.WriteString("\n\n")
 
-	writeRow(&b, "Current email", formatEmail(currentEmail))
+	writeRow(&b, "Platform", platformName)
+	writeRow(&b, "Current account", formatEmail(currentID))
 	writeRow(&b, "Active profile", formatActive(active))
 
 	b.WriteString("\n")

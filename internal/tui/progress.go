@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/reloadlife/cursor-account-switcher/internal/app"
 	"github.com/reloadlife/cursor-account-switcher/internal/paths"
+	"github.com/reloadlife/cursor-account-switcher/internal/platform"
 	"github.com/reloadlife/cursor-account-switcher/internal/profiles"
 )
 
@@ -22,7 +23,7 @@ type progressModel struct {
 	doneCh  <-chan error
 }
 
-type stepMsg struct {
+type progressStepMsg struct {
 	label string
 }
 
@@ -48,9 +49,9 @@ func RunSwitch(id paths.AccountID) error {
 		doneCh:  doneCh,
 		current: "Preparing...",
 	}
-	m.spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	m.spinner.Style = lipgloss.NewStyle().Foreground(colorAccent)
 
-	final, err := tea.NewProgram(m).Run()
+	final, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 	if err != nil {
 		return err
 	}
@@ -70,7 +71,7 @@ func nextStep(stepCh <-chan string, doneCh <-chan error) tea.Cmd {
 	return func() tea.Msg {
 		label, ok := <-stepCh
 		if ok {
-			return stepMsg{label: label}
+			return progressStepMsg{label: label}
 		}
 		return switchFinishedMsg{err: <-doneCh}
 	}
@@ -79,7 +80,7 @@ func nextStep(stepCh <-chan string, doneCh <-chan error) tea.Cmd {
 func (m progressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if msg.String() == "ctrl+c" {
+		if msg.String() == "ctrl+c" || (m.done && msg.String() != "") {
 			return m, tea.Quit
 		}
 
@@ -88,7 +89,7 @@ func (m progressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
-	case stepMsg:
+	case progressStepMsg:
 		m.current = msg.label
 		return m, nextStep(m.stepCh, m.doneCh)
 
@@ -98,7 +99,7 @@ func (m progressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.current = msg.err.Error()
 		}
-		return m, tea.Quit
+		return m, nil
 	}
 
 	return m, nil
@@ -108,7 +109,12 @@ func (m progressModel) View() string {
 	var b strings.Builder
 	label := profiles.AccountLabel(m.account)
 
-	b.WriteString(appTitle.Render(fmt.Sprintf("Switching to %s", label)))
+	b.WriteString(boxTitle(fmt.Sprintf("Switching to %s", label)))
+	p, _ := platform.CurrentPlatform()
+	if p != nil {
+		b.WriteString("\n")
+		b.WriteString(appSubtitle.Render(p.Name))
+	}
 	b.WriteString("\n\n")
 
 	if m.done {
@@ -117,13 +123,13 @@ func (m progressModel) View() string {
 		} else {
 			b.WriteString(activeBadge.Render("✓ " + m.current))
 		}
-		return b.String()
+		b.WriteString("\n\n")
+		b.WriteString(helpStyle.Render("press any key"))
+		return appStyle.Render(noticeBox.Render(b.String()))
 	}
 
 	b.WriteString(m.spinner.View())
 	b.WriteString(" ")
 	b.WriteString(valueStyle.Render(m.current))
-	return b.String()
+	return appStyle.Render(b.String())
 }
-
-var valueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))

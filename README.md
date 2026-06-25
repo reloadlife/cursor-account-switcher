@@ -1,6 +1,15 @@
 # cursor-account-switcher
 
-CLI to switch between Cursor accounts. Swaps auth session in `state.vscdb`, force-quits Cursor, restarts.
+CLI to switch between saved accounts across AI coding platforms. Swaps auth sessions, optionally force-quits and restarts the host app.
+
+## Supported platforms
+
+| Platform | ID | Auth storage | Restarts app |
+|----------|-----|--------------|--------------|
+| Cursor | `cursor` | state.vscdb | yes |
+| Claude Code | `claude` | ~/.claude/.credentials.json + keychain | no |
+| Codex | `codex` | ~/.codex/auth.json | no |
+| VS Code / GitHub Copilot | `vscode` | state.vscdb + keychain | yes |
 
 ## Install
 
@@ -11,6 +20,13 @@ curl -fsSL https://raw.githubusercontent.com/reloadlife/cursor-account-switcher/
 Requires `~/.local/bin` on your `PATH`.
 
 ## Setup
+
+Pick a platform (defaults to Cursor):
+
+```bash
+cursor-switch platform list
+cursor-switch platform use claude
+```
 
 Default accounts: **personal** and **work**.
 
@@ -25,7 +41,6 @@ Add more with custom labels:
 cursor-switch account add freelance --label "Freelance Client"
 cursor-switch save freelance
 
-# or register on first save:
 cursor-switch save side-project --label "Side Project"
 ```
 
@@ -39,7 +54,21 @@ cursor-switch status
 cursor-switch account list
 cursor-switch account add <id> --label "Display Name"
 cursor-switch account remove freelance
+
+cursor-switch p list                    # alias for platform list
+cursor-switch p use claude              # set default platform
+cursor-switch --platform codex save work
 ```
+
+Each platform keeps its own account list and saved profiles.
+
+## Platform notes
+
+**Claude Code** — saves `claudeAiOauth` tokens and `oauthAccount` from `~/.claude.json` (email lives there, not in credentials). Keychain restore merges tokens without wiping MCP plugin auth.
+
+**Codex** — requires file-based auth (`cli_auth_credentials_store = "file"` in `~/.codex/config.toml`). Keyring-only mode is not supported yet.
+
+**VS Code / Copilot** — swaps GitHub-related state.vscdb keys and Keychain entries. Sign out/in once after switching if Copilot doesn't pick up the new session.
 
 ## Build from source
 
@@ -49,5 +78,15 @@ make install
 
 ## Storage
 
-Config: `~/.cursor-account-switcher/config.json`  
-Profiles: `~/.cursor-account-switcher/profiles/` (auth tokens — keep private)
+Global config: `~/.cursor-account-switcher/config.json` (default platform)
+
+Per platform:
+```
+~/.cursor-account-switcher/cursor/config.json
+~/.cursor-account-switcher/cursor/profiles/
+~/.cursor-account-switcher/claude/...
+~/.cursor-account-switcher/codex/...
+~/.cursor-account-switcher/vscode/...
+```
+
+Profiles contain auth tokens — keep private.

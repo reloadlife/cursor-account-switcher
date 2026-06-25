@@ -3,6 +3,7 @@ package profiles
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -10,8 +11,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/reloadlife/cursor-account-switcher/internal/database"
 	"github.com/reloadlife/cursor-account-switcher/internal/paths"
+	"github.com/reloadlife/cursor-account-switcher/internal/platform"
+	"github.com/reloadlife/cursor-account-switcher/internal/platform/auth"
+	"github.com/reloadlife/cursor-account-switcher/internal/platform/keychain"
 )
 
 type AccountDef struct {
@@ -20,16 +23,23 @@ type AccountDef struct {
 }
 
 type Profile struct {
-	ID       paths.AccountID   `json:"id"`
-	Label    string            `json:"label"`
-	Email    *string           `json:"email"`
-	SavedAt  string            `json:"savedAt"`
-	AuthKeys map[string]string `json:"authKeys"`
+	ID       paths.AccountID    `json:"id"`
+	Platform platform.ID      `json:"platform,omitempty"`
+	Label    string             `json:"label"`
+	Email    *string            `json:"email"`
+	SavedAt  string             `json:"savedAt"`
+	AuthKeys map[string]string  `json:"authKeys,omitempty"`
+	AuthFiles map[string][]byte `json:"authFiles,omitempty"`
+	Keychain []keychain.Entry   `json:"keychain,omitempty"`
 }
 
 type Config struct {
 	ActiveAccount *paths.AccountID `json:"activeAccount"`
 	Accounts      []AccountDef     `json:"accounts"`
+}
+
+type GlobalConfig struct {
+	ActivePlatform platform.ID `json:"activePlatform"`
 }
 
 var idPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
@@ -69,14 +79,149 @@ func ValidateID(id paths.AccountID) error {
 	return nil
 }
 
-func ensureDataDir() error {
-	if err := os.MkdirAll(filepath.Join(paths.DataDir(), "profiles"), 0o700); err != nil {
+func LoadGlobalConfig() (GlobalConfig, error) {
+	data, err := os.ReadFile(paths.GlobalConfigPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return GlobalConfig{ActivePlatform: platform.Cursor}, nil
+		}
+		return GlobalConfig{}, err
+	}
+
+	var cfg GlobalConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return GlobalConfig{}, err
+	}
+	if cfg.ActivePlatform == "" {
+		cfg.ActivePlatform = platform.Cursor
+	}
+	return cfg, nil
+}
+
+func SaveGlobalConfig(cfg GlobalConfig) error {
+	if err := os.MkdirAll(paths.DataDir(), 0o700); err != nil {
 		return err
 	}
-	return os.MkdirAll(paths.DataDir(), 0o700)
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(paths.GlobalConfigPath(), data, 0o600)
+}
+
+func InitPlatform() error {
+	if err := migrateLegacyLayout(); err != nil {
+		return err
+	}
+	global, err := LoadGlobalConfig()
+	if err != nil {
+		return err
+	}
+	return platform.SetCurrent(global.ActivePlatform)
+}
+
+func migrateLegacyLayout() error {
+	legacyProfiles := paths.LegacyProfilesDir()
+	cursorProfiles := filepath.Join(paths.PlatformDataDir(platform.Cursor), "profiles")
+	legacyConfig := paths.LegacyConfigPath()
+	cursorConfig := paths.ConfigPathFor(platform.Cursor)
+
+	if _, err := os.Stat(legacyProfiles); err == nil {
+		if _, err := os.Stat(cursorProfiles); os.IsNotExist(err) {
+			if err := os.MkdirAll(filepath.Dir(cursorProfiles), 0o700); err != nil {
+				return err
+			}
+			if err := os.Rename(legacyProfiles, cursorProfiles); err != nil {
+				if err := copyDir(legacyProfiles, cursorProfiles); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	data, err := os.ReadFile(legacyConfig)
+	if err != nil {
+		return nil
+	}
+
+	var old Config
+	if err := json.Unmarshal(data, &old); err != nil {
+		return nil
+	}
+	if len(old.Accounts) == 0 {
+		return nil
+	}
+
+	if _, err := os.Stat(cursorConfig); os.IsNotExist(err) {
+		if err := ensureDataDir(); err != nil {
+			return err
+		}
+		if err := saveConfig(old); err != nil {
+			return err
+		}
+	}
+
+	global := GlobalConfig{ActivePlatform: platform.Cursor}
+	return SaveGlobalConfig(global)
+}
+
+func copyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, 0o700)
+		}
+		return copyFile(path, target)
+	})
+}
+
+func copyFile(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, infoMode(src))
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
+}
+
+func infoMode(path string) os.FileMode {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0o600
+	}
+	return info.Mode().Perm()
+}
+
+func ensureDataDir() error {
+	if err := os.MkdirAll(paths.ProfilesDir(), 0o700); err != nil {
+		return err
+	}
+	return os.MkdirAll(paths.PlatformDataDir(platform.Current()), 0o700)
 }
 
 func loadConfig() (Config, error) {
+	if err := ensureDataDir(); err != nil {
+		return Config{}, err
+	}
+
 	data, err := os.ReadFile(paths.ConfigPath())
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -269,6 +414,32 @@ type SaveOptions struct {
 	Label string
 }
 
+func profileFromAuth(id paths.AccountID, authData auth.Data) *Profile {
+	var email *string
+	if idStr := currentPlatform().Auth.Identifier(authData); idStr != "" {
+		email = &idStr
+	}
+
+	return &Profile{
+		ID:        id,
+		Platform:  platform.Current(),
+		Label:     AccountLabel(id),
+		Email:     email,
+		SavedAt:   time.Now().UTC().Format(time.RFC3339),
+		AuthKeys:  authData.Keys,
+		AuthFiles: authData.Files,
+		Keychain:  authData.Keychain,
+	}
+}
+
+func authFromProfile(profile *Profile) auth.Data {
+	return auth.Data{
+		Keys:     profile.AuthKeys,
+		Files:    profile.AuthFiles,
+		Keychain: profile.Keychain,
+	}
+}
+
 func SaveCurrentAs(id paths.AccountID, opts SaveOptions) (*Profile, error) {
 	label := strings.TrimSpace(opts.Label)
 	if !AccountExists(id) {
@@ -284,33 +455,16 @@ func SaveCurrentAs(id paths.AccountID, opts SaveOptions) (*Profile, error) {
 		}
 	}
 
-	db, err := database.Open(paths.CursorStateDBPath())
+	p := currentPlatform()
+	authData, err := p.Auth.Read()
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
-
-	authKeys, err := database.ReadAuthKeys(db)
-	if err != nil {
+	if err := p.Auth.Validate(authData); err != nil {
 		return nil, err
 	}
 
-	if authKeys["cursorAuth/accessToken"] == "" {
-		return nil, fmt.Errorf("no Cursor auth session found — log into Cursor first, then save")
-	}
-
-	var email *string
-	if e := authKeys["cursorAuth/cachedEmail"]; e != "" {
-		email = &e
-	}
-
-	profile := &Profile{
-		ID:       id,
-		Label:    AccountLabel(id),
-		Email:    email,
-		SavedAt:  time.Now().UTC().Format(time.RFC3339),
-		AuthKeys: authKeys,
-	}
+	profile := profileFromAuth(id, authData)
 
 	if err := ensureDataDir(); err != nil {
 		return nil, err
@@ -344,13 +498,17 @@ func ActiveAccount() *paths.AccountID {
 	return cfg.ActiveAccount
 }
 
-func CurrentEmail() (string, error) {
-	db, err := database.Open(paths.CursorStateDBPath())
+func CurrentIdentifier() (string, error) {
+	p := currentPlatform()
+	authData, err := p.Auth.Read()
 	if err != nil {
 		return "", err
 	}
-	defer db.Close()
-	return database.ReadCurrentEmail(db)
+	return p.Auth.Identifier(authData), nil
+}
+
+func CurrentEmail() (string, error) {
+	return CurrentIdentifier()
 }
 
 func Restore(id paths.AccountID) (*Profile, error) {
@@ -361,17 +519,14 @@ func Restore(id paths.AccountID) (*Profile, error) {
 	if profile == nil {
 		return nil, fmt.Errorf(`no saved profile for "%s" — run: cursor-switch save %s`, AccountLabel(id), id)
 	}
-	if profile.AuthKeys["cursorAuth/accessToken"] == "" {
-		return nil, fmt.Errorf(`profile "%s" has no access token`, AccountLabel(id))
+
+	authData := authFromProfile(profile)
+	p := currentPlatform()
+	if err := p.Auth.Validate(authData); err != nil {
+		return nil, fmt.Errorf(`profile "%s" has invalid credentials: %w`, AccountLabel(id), err)
 	}
 
-	db, err := database.Open(paths.CursorStateDBPath())
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
-
-	if err := database.WriteAuthKeys(db, profile.AuthKeys); err != nil {
+	if err := p.Auth.Write(authData); err != nil {
 		return nil, err
 	}
 
@@ -393,4 +548,19 @@ func AutoSaveActive() {
 		return
 	}
 	_, _ = SaveCurrentAs(*active, SaveOptions{})
+}
+
+func currentPlatform() *platform.Platform {
+	p, err := platform.CurrentPlatform()
+	if err != nil {
+		return platform.All()[platform.Cursor]
+	}
+	return p
+}
+
+func SetActivePlatform(id platform.ID) error {
+	if err := platform.SetCurrent(id); err != nil {
+		return err
+	}
+	return SaveGlobalConfig(GlobalConfig{ActivePlatform: id})
 }

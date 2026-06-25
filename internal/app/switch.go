@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/reloadlife/cursor-account-switcher/internal/paths"
-	"github.com/reloadlife/cursor-account-switcher/internal/process"
+	"github.com/reloadlife/cursor-account-switcher/internal/platform"
 	"github.com/reloadlife/cursor-account-switcher/internal/profiles"
 )
 
@@ -17,20 +17,29 @@ func SwitchTo(id paths.AccountID, onStep StepFn) error {
 		}
 	}
 
+	p, err := platform.CurrentPlatform()
+	if err != nil {
+		return err
+	}
+
 	if !profiles.Exists(id) {
 		return fmt.Errorf(
-			"profile %q not saved yet — log into that account in Cursor, then run: cursor-switch save %s",
-			profiles.AccountLabel(id), id,
+			"profile %q not saved yet — log into %s, then run: cursor-switch save %s",
+			profiles.AccountLabel(id), p.Name, id,
 		)
 	}
 
 	active := profiles.ActiveAccount()
-	currentEmail, _ := profiles.CurrentEmail()
+	currentID, _ := profiles.CurrentIdentifier()
 	target, _ := profiles.Load(id)
 
 	if target != nil && active != nil && *active == id {
-		if target.Email != nil && currentEmail == *target.Email {
-			step(fmt.Sprintf("Already on %s (%s)", profiles.AccountLabel(id), *target.Email))
+		targetID := ""
+		if target.Email != nil {
+			targetID = *target.Email
+		}
+		if targetID != "" && currentID == targetID {
+			step(fmt.Sprintf("Already on %s (%s)", profiles.AccountLabel(id), targetID))
 			return nil
 		}
 	}
@@ -38,9 +47,11 @@ func SwitchTo(id paths.AccountID, onStep StepFn) error {
 	step("Saving current session...")
 	profiles.AutoSaveActive()
 
-	step("Force quitting Cursor...")
-	if err := process.ForceQuitCursor(); err != nil {
-		return err
+	if p.NeedsRestart() {
+		step(fmt.Sprintf("Force quitting %s...", p.Name))
+		if err := p.ForceQuit(); err != nil {
+			return err
+		}
 	}
 
 	step("Restoring auth session...")
@@ -49,16 +60,26 @@ func SwitchTo(id paths.AccountID, onStep StepFn) error {
 		return err
 	}
 
-	email := profiles.AccountLabel(id)
+	identifier := profiles.AccountLabel(id)
 	if restored.Email != nil {
-		email = *restored.Email
+		identifier = *restored.Email
 	}
 
-	step("Starting Cursor...")
-	if err := process.StartCursor(); err != nil {
-		return err
+	if p.NeedsRestart() {
+		step(fmt.Sprintf("Starting %s...", p.Name))
+		if err := p.Start(); err != nil {
+			return err
+		}
 	}
 
-	step(fmt.Sprintf("Switched to %s (%s)", profiles.AccountLabel(id), email))
+	step(fmt.Sprintf("Switched to %s (%s)", profiles.AccountLabel(id), identifier))
 	return nil
+}
+
+func PlatformName() string {
+	p, err := platform.CurrentPlatform()
+	if err != nil {
+		return "Cursor"
+	}
+	return p.Name
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/reloadlife/cursor-account-switcher/internal/app"
+	"github.com/reloadlife/cursor-account-switcher/internal/platform"
 	"github.com/reloadlife/cursor-account-switcher/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -12,7 +13,7 @@ var saveLabel string
 
 var saveCmd = &cobra.Command{
 	Use:   "save [account]",
-	Short: "Save the current Cursor session as a profile",
+	Short: "Save the current session as a profile",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id, err := app.ResolveAccount(args[0])
@@ -28,12 +29,12 @@ var saveCmd = &cobra.Command{
 			return err
 		}
 
-		email := "unknown"
+		email := ""
 		if profile.Email != nil {
 			email = *profile.Email
 		}
 
-		fmt.Println(tui.FormatSaveSuccess(id, email))
+		fmt.Println(tui.FormatSaveSuccess(platform.Current(), id, email))
 		return nil
 	},
 }

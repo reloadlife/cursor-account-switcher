@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/reloadlife/cursor-account-switcher/internal/platform"
 )
 
 type AccountID string
@@ -13,37 +15,6 @@ func homeDir() string {
 		return h
 	}
 	return ""
-}
-
-func CursorStateDBPath() string {
-	home := homeDir()
-	switch runtime.GOOS {
-	case "darwin":
-		return filepath.Join(home, "Library", "Application Support", "Cursor", "User", "globalStorage", "state.vscdb")
-	case "windows":
-		appData := os.Getenv("APPDATA")
-		if appData == "" {
-			appData = filepath.Join(home, "AppData", "Roaming")
-		}
-		return filepath.Join(appData, "Cursor", "User", "globalStorage", "state.vscdb")
-	default:
-		return filepath.Join(home, ".config", "Cursor", "User", "globalStorage", "state.vscdb")
-	}
-}
-
-func CursorAppPath() string {
-	switch runtime.GOOS {
-	case "darwin":
-		return "/Applications/Cursor.app"
-	case "windows":
-		localAppData := os.Getenv("LOCALAPPDATA")
-		if localAppData == "" {
-			localAppData = homeDir()
-		}
-		return filepath.Join(localAppData, "Programs", "cursor", "Cursor.exe")
-	default:
-		return "cursor"
-	}
 }
 
 func DataDir() string {
@@ -62,10 +33,38 @@ func DataDir() string {
 	}
 }
 
-func ProfilePath(id AccountID) string {
-	return filepath.Join(DataDir(), "profiles", string(id)+".json")
+func GlobalConfigPath() string {
+	return filepath.Join(DataDir(), "config.json")
+}
+
+func PlatformDataDir(id platform.ID) string {
+	return filepath.Join(DataDir(), string(id))
 }
 
 func ConfigPath() string {
+	return ConfigPathFor(platform.Current())
+}
+
+func ConfigPathFor(id platform.ID) string {
+	return filepath.Join(PlatformDataDir(id), "config.json")
+}
+
+func ProfilePath(id AccountID) string {
+	return ProfilePathFor(platform.Current(), id)
+}
+
+func ProfilePathFor(platformID platform.ID, id AccountID) string {
+	return filepath.Join(PlatformDataDir(platformID), "profiles", string(id)+".json")
+}
+
+func ProfilesDir() string {
+	return filepath.Join(PlatformDataDir(platform.Current()), "profiles")
+}
+
+func LegacyConfigPath() string {
 	return filepath.Join(DataDir(), "config.json")
+}
+
+func LegacyProfilesDir() string {
+	return filepath.Join(DataDir(), "profiles")
 }
