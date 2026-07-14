@@ -33,13 +33,14 @@ func All() map[ID]*Platform {
 		Cursor: cursorPlatform(),
 		Claude: claudePlatform(),
 		Codex:  codexPlatform(),
+		Grok:   grokPlatform(),
 		VSCode: vscodePlatform(),
 	}
 }
 
 func List() []*Platform {
 	all := All()
-	order := []ID{Cursor, Claude, Codex, VSCode}
+	order := []ID{Cursor, Claude, Codex, Grok, VSCode}
 	out := make([]*Platform, 0, len(order))
 	for _, id := range order {
 		if p, ok := all[id]; ok {
@@ -182,6 +183,30 @@ func codexPlatform() *Platform {
 			PlatformName: "Codex",
 		}),
 	}
+}
+
+func grokPlatform() *Platform {
+	return &Platform{
+		ID:          Grok,
+		Name:        "Grok",
+		Description: "xAI Grok CLI auth (~/.grok/auth.json)",
+		// File-based — no app restart. Parallel use: materialize profile under isolated HOME.
+		Auth: auth.NewFile(auth.FileConfig{
+			Paths:        []func() string{grokAuthPath},
+			PlatformName: "Grok",
+		}),
+	}
+}
+
+func grokAuthPath() string {
+	if dir := os.Getenv("GROK_HOME"); dir != "" {
+		return filepath.Join(dir, "auth.json")
+	}
+	// Prefer XDG-style if set; else ~/.grok/auth.json
+	if dir := os.Getenv("GROK_CONFIG_DIR"); dir != "" {
+		return filepath.Join(dir, "auth.json")
+	}
+	return filepath.Join(homeDir(), ".grok", "auth.json")
 }
 
 func vscodePlatform() *Platform {

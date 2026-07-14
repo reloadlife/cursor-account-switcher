@@ -16,7 +16,7 @@ var rootCmd = &cobra.Command{
 	Short: "Switch between saved accounts across AI coding platforms",
 	Long: `cursor-switch swaps saved auth sessions between personal and work accounts.
 
-Supports Cursor, Claude Code, Codex, VS Code / GitHub Copilot, and more.
+Supports Cursor, Claude Code, Codex, Grok, VS Code / GitHub Copilot, and more.
 Use --platform to target a specific tool, or "cursor-switch platform use" to set a default.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if err := profiles.InitPlatform(); err != nil {
@@ -40,10 +40,11 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&platformFlag, "platform", "", "platform: cursor, claude, codex, vscode")
+	rootCmd.PersistentFlags().StringVar(&platformFlag, "platform", "", "platform: cursor, claude, codex, grok, vscode")
 	rootCmd.AddCommand(switchCmd)
 	rootCmd.AddCommand(saveCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(accountCmd)
 	rootCmd.AddCommand(platformCmd)
+	rootCmd.AddCommand(materializeCmd)
 }

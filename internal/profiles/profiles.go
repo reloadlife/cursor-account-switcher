@@ -542,6 +542,78 @@ func Restore(id paths.AccountID) (*Profile, error) {
 	return profile, nil
 }
 
+// Materialize writes a profile's auth files under destHome (isolated HOME for parallel agents).
+// Returns the absolute destHome path. Does not change the global active login.
+func Materialize(id paths.AccountID, destHome string) (string, error) {
+	profile, err := Load(id)
+	if err != nil {
+		return "", err
+	}
+	if profile == nil {
+		return "", fmt.Errorf(`no saved profile for "%s" — run: cursor-switch save %s`, AccountLabel(id), id)
+	}
+	destHome, err = filepath.Abs(destHome)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(destHome, 0o700); err != nil {
+		return "", err
+	}
+
+	authData := authFromProfile(profile)
+	// Remap absolute source paths → relative under destHome
+	if len(authData.Files) > 0 {
+		remapped := make(map[string][]byte, len(authData.Files))
+		for src, content := range authData.Files {
+			rel := RemapAuthRelPath(src)
+			dest := filepath.Join(destHome, filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
+				return "", err
+			}
+			if err := os.WriteFile(dest, content, 0o600); err != nil {
+				return "", err
+			}
+			remapped[dest] = content
+		}
+		authData.Files = remapped
+	}
+	// Keychain entries cannot be sandboxed easily; skip for isolation (CLI file auth only)
+	_ = authData.Keychain
+	_ = authData.Keys // vscdb keys need DB write — handled by writing remapped state.vscdb if present
+
+	// If keys present (vscdb style), write is already done if state.vscdb was in Files.
+	// Cursor isolation requires the remapped DB path under destHome/.config/Cursor/...
+	return destHome, nil
+}
+
+// RemapAuthRelPath maps a live absolute auth path to a path relative to HOME.
+func RemapAuthRelPath(abs string) string {
+	abs = filepath.ToSlash(abs)
+	// known suffixes → relative layout under isolated HOME
+	type rule struct {
+		contains string
+		rel      string
+	}
+	rules := []rule{
+		{".grok/auth.json", ".grok/auth.json"},
+		{".codex/auth.json", ".codex/auth.json"},
+		{".claude/.credentials.json", ".claude/.credentials.json"},
+		{"/.claude.json", ".claude.json"},
+		{"Cursor/User/globalStorage/state.vscdb", ".config/Cursor/User/globalStorage/state.vscdb"},
+		{"Code/User/globalStorage/state.vscdb", ".config/Code/User/globalStorage/state.vscdb"},
+	}
+	for _, r := range rules {
+		if i := strings.Index(abs, r.contains); i >= 0 {
+			if r.contains == "/.claude.json" {
+				return ".claude.json"
+			}
+			return r.rel
+		}
+	}
+	// fallback: keep basename under .agents-auth/
+	return filepath.ToSlash(filepath.Join(".agents-auth", filepath.Base(abs)))
+}
+
 func AutoSaveActive() {
 	active := ActiveAccount()
 	if active == nil {

@@ -9,6 +9,7 @@ CLI to switch between saved accounts across AI coding platforms. Swaps auth sess
 | Cursor | `cursor` | state.vscdb | yes |
 | Claude Code | `claude` | ~/.claude/.credentials.json + keychain | no |
 | Codex | `codex` | ~/.codex/auth.json | no |
+| Grok | `grok` | ~/.grok/auth.json | no |
 | VS Code / GitHub Copilot | `vscode` | state.vscdb + keychain | yes |
 
 ## Install
@@ -58,6 +59,12 @@ cursor-switch account remove freelance
 cursor-switch p list                    # alias for platform list
 cursor-switch p use claude              # set default platform
 cursor-switch --platform codex save work
+cursor-switch --platform grok save personal
+cursor-switch --platform grok switch work
+
+# Isolated HOME for parallel agents (does not change global login)
+cursor-switch --platform grok materialize work --dest /tmp/grok-work-home
+HOME=/tmp/grok-work-home grok
 ```
 
 Each platform keeps its own account list and saved profiles.
@@ -67,6 +74,8 @@ Each platform keeps its own account list and saved profiles.
 **Claude Code** — saves `claudeAiOauth` tokens and `oauthAccount` from `~/.claude.json` (email lives there, not in credentials). Keychain restore merges tokens without wiping MCP plugin auth.
 
 **Codex** — requires file-based auth (`cli_auth_credentials_store = "file"` in `~/.codex/config.toml`). Keyring-only mode is not supported yet.
+
+**Grok** — swaps `~/.grok/auth.json` (OIDC session). Use `materialize` + `HOME=…` for parallel sessions without clobbering the global login.
 
 **VS Code / Copilot** — swaps GitHub-related state.vscdb keys and Keychain entries. Sign out/in once after switching if Copilot doesn't pick up the new session.
 

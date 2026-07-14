@@ -42,6 +42,36 @@ func IdentifierFromJSON(raw []byte) string {
 			return v
 		}
 	}
+	// Grok OIDC and similar: top-level map of provider → { email, … }
+	if v := firstEmailDeep(data, 0); v != "" {
+		return v
+	}
+	return ""
+}
+
+func firstEmailDeep(v any, depth int) string {
+	if depth > 6 {
+		return ""
+	}
+	switch t := v.(type) {
+	case map[string]any:
+		for _, key := range []string{"email", "emailAddress", "login"} {
+			if s, ok := t[key].(string); ok && strings.Contains(s, "@") {
+				return strings.TrimSpace(s)
+			}
+		}
+		for _, child := range t {
+			if s := firstEmailDeep(child, depth+1); s != "" {
+				return s
+			}
+		}
+	case []any:
+		for _, child := range t {
+			if s := firstEmailDeep(child, depth+1); s != "" {
+				return s
+			}
+		}
+	}
 	return ""
 }
 

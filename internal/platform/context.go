@@ -6,6 +6,7 @@ const (
 	Cursor ID = "cursor"
 	Claude ID = "claude"
 	Codex  ID = "codex"
+	Grok   ID = "grok"
 	VSCode ID = "vscode"
 )
 
