@@ -82,6 +82,24 @@ func (c *Composite) Write(data Data) error {
 	return nil
 }
 
+func (c *Composite) Clear() error {
+	if err := c.primary.Clear(); err != nil {
+		return err
+	}
+	if keychain.Supported() {
+		for _, spec := range c.keychain {
+			account := spec.Account
+			if account == "" {
+				account = os.Getenv("USER")
+			}
+			_ = keychain.Delete(spec.Service, account)
+			// also try empty account variant
+			_ = keychain.Delete(spec.Service, "")
+		}
+	}
+	return nil
+}
+
 func (c *Composite) Validate(data Data) error {
 	if len(data.Keychain) > 0 {
 		return nil

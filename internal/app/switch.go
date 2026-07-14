@@ -22,11 +22,41 @@ func SwitchTo(id paths.AccountID, onStep StepFn) error {
 		return err
 	}
 
+	// Empty slot (registered, no saved credentials): clear live auth so user can sign in.
 	if !profiles.Exists(id) {
-		return fmt.Errorf(
-			"profile %q not saved yet — log into %s, then run: cursor-switch save %s",
+		if !profiles.AccountExists(id) {
+			return fmt.Errorf(
+				"unknown account %q — run: cursor-switch account add %s --label \"…\"",
+				id, id,
+			)
+		}
+		step("Saving current session...")
+		profiles.AutoSaveActive()
+
+		if p.NeedsRestart() {
+			step(fmt.Sprintf("Force quitting %s...", p.Name))
+			if err := p.ForceQuit(); err != nil {
+				return err
+			}
+		}
+
+		step(fmt.Sprintf("Clearing live auth for empty profile %s...", profiles.AccountLabel(id)))
+		if err := profiles.ActivateEmpty(id); err != nil {
+			return err
+		}
+
+		if p.NeedsRestart() {
+			step(fmt.Sprintf("Starting %s...", p.Name))
+			if err := p.Start(); err != nil {
+				return err
+			}
+		}
+
+		step(fmt.Sprintf(
+			"Empty profile %s is active — sign into %s, then: cursor-switch save %s",
 			profiles.AccountLabel(id), p.Name, id,
-		)
+		))
+		return nil
 	}
 
 	active := profiles.ActiveAccount()

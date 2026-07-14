@@ -40,6 +40,8 @@ Add more with custom labels:
 
 ```bash
 cursor-switch account add freelance --label "Freelance Client"
+cursor-switch switch freelance          # clear live login → empty slot
+# sign into the tool as the new account, then:
 cursor-switch save freelance
 
 cursor-switch save side-project --label "Side Project"
@@ -49,7 +51,8 @@ cursor-switch save side-project --label "Side Project"
 
 ```bash
 cursor-switch                         # interactive TUI menu
-cursor-switch switch work             # by id or label
+cursor-switch switch work             # by id or label (restores saved profile)
+cursor-switch switch freelance        # empty slot → clears live auth for a fresh sign-in
 cursor-switch save personal
 cursor-switch status
 cursor-switch account list

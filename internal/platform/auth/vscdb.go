@@ -3,6 +3,7 @@ package auth
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/reloadlife/cursor-account-switcher/internal/database"
 )
@@ -52,6 +53,19 @@ func (v *VSCDB) Write(data Data) error {
 		return err
 	}
 	return nil
+}
+
+func (v *VSCDB) Clear() error {
+	// WriteKeys with empty map deletes managed keys then inserts nothing.
+	err := v.Write(Data{Keys: map[string]string{}})
+	if err != nil {
+		// No DB yet → already signed out.
+		msg := strings.ToLower(err.Error())
+		if os.IsNotExist(err) || strings.Contains(msg, "not found") || strings.Contains(msg, "no such file") {
+			return nil
+		}
+	}
+	return err
 }
 
 func (v *VSCDB) Validate(data Data) error {
@@ -126,6 +140,17 @@ func (f *File) Write(data Data) error {
 		if err := os.WriteFile(path, content, 0o600); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (f *File) Clear() error {
+	for _, pathFn := range f.cfg.Paths {
+		path := pathFn()
+		if path == "" {
+			continue
+		}
+		_ = os.Remove(path)
 	}
 	return nil
 }

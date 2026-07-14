@@ -542,6 +542,25 @@ func Restore(id paths.AccountID) (*Profile, error) {
 	return profile, nil
 }
 
+// ActivateEmpty clears live auth and marks id as the active profile slot so
+// the user can sign in as a new account, then `cursor-switch save <id>`.
+// The account must already be registered (account add); a saved profile is not required.
+func ActivateEmpty(id paths.AccountID) error {
+	if !AccountExists(id) {
+		return fmt.Errorf("unknown account %q — run: cursor-switch account add %s --label \"…\"", id, id)
+	}
+	p := currentPlatform()
+	if err := p.Auth.Clear(); err != nil {
+		return fmt.Errorf("clear live auth: %w", err)
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	cfg.ActiveAccount = &id
+	return saveConfig(cfg)
+}
+
 // Materialize writes a profile's auth files under destHome (isolated HOME for parallel agents).
 // Returns the absolute destHome path. Does not change the global active login.
 func Materialize(id paths.AccountID, destHome string) (string, error) {

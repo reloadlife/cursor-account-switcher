@@ -98,6 +98,28 @@ func (c *Claude) Write(data Data) error {
 	return nil
 }
 
+func (c *Claude) Clear() error {
+	_ = os.Remove(c.cfg.CredentialsPath())
+	// Strip oauthAccount from config if present; leave other settings intact.
+	if path := c.cfg.ConfigPath(); path != "" {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			var cfg map[string]json.RawMessage
+			if json.Unmarshal(data, &cfg) == nil {
+				delete(cfg, "oauthAccount")
+				if out, err := json.MarshalIndent(cfg, "", "  "); err == nil {
+					_ = os.WriteFile(path, out, 0o600)
+				}
+			}
+		}
+	}
+	if keychain.Supported() {
+		_ = keychain.Delete(c.cfg.KeychainService, os.Getenv("USER"))
+		_ = keychain.Delete(c.cfg.KeychainService, "")
+	}
+	return nil
+}
+
 func (c *Claude) Validate(data Data) error {
 	credsRaw := data.Files[c.cfg.CredentialsPath()]
 	if len(credsRaw) == 0 {

@@ -18,6 +18,8 @@ type Backend interface {
 	Write(Data) error
 	Validate(Data) error
 	Identifier(Data) string
+	// Clear removes live auth so a fresh sign-in can fill an empty profile slot.
+	Clear() error
 }
 
 func IdentifierFromJSON(raw []byte) string {

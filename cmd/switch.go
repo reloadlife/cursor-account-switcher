@@ -10,8 +10,13 @@ import (
 
 var switchCmd = &cobra.Command{
 	Use:   "switch [account]",
-	Short: "Switch to a saved account",
-	Args:  cobra.ExactArgs(1),
+	Short: "Switch to a saved account, or an empty slot to sign into a new one",
+	Long: `Switch the live auth session to a registered account.
+
+If the account has a saved profile, credentials are restored.
+If the account is an empty slot (added but never saved), live auth is cleared
+so you can sign into the tool as a new user, then run: cursor-switch save <id>`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id, err := app.ResolveAccount(args[0])
 		if err != nil {
