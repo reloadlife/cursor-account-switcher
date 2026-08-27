@@ -23,17 +23,23 @@ so you can sign into the tool as a new user, then run: cursor-switch save <id>`,
 			return err
 		}
 
+		opts := app.SwitchOptions{}
+		if noStart, _ := cmd.Flags().GetBool("no-start"); noStart {
+			opts.NoStart = true
+		}
+
 		plain, _ := cmd.Flags().GetBool("plain")
 		if plain {
-			return app.SwitchTo(id, func(label string) {
+			return app.SwitchTo(id, opts, func(label string) {
 				fmt.Println(label)
 			})
 		}
 
-		return tui.RunSwitch(id)
+		return tui.RunSwitch(id, opts)
 	},
 }
 
 func init() {
 	switchCmd.Flags().Bool("plain", false, "plain text output without spinner")
+	switchCmd.Flags().Bool("no-start", false, "do not start the app after switching (force-quit and restore/clear auth only)")
 }
