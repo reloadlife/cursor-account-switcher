@@ -5,7 +5,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/reloadlife/cursor-account-switcher/internal/platform/auth"
@@ -21,11 +20,12 @@ type Platform struct {
 }
 
 type ProcessConfig struct {
-	DisplayName string
-	AppPath     func() string
-	KillNames   []string
-	PgrepMatch  string
-	WindowsExe  string
+	DisplayName  string
+	AppPath      func() string
+	KillNames    []string
+	PgrepMatch   string
+	PgrepMatches []string
+	WindowsExe   string
 }
 
 func All() map[ID]*Platform {
@@ -62,16 +62,9 @@ func (p *Platform) ForceQuit() error {
 
 	switch runtime.GOOS {
 	case "windows":
-		if cfg.WindowsExe != "" {
-			_ = exec.Command("taskkill", "/F", "/IM", cfg.WindowsExe).Run()
-		}
+		windowsForceQuit(cfg)
 	default:
-		for _, name := range cfg.KillNames {
-			_ = exec.Command("killall", "-9", name).Run()
-		}
-		if cfg.PgrepMatch != "" {
-			_ = exec.Command("pkill", "-9", "-f", cfg.PgrepMatch).Run()
-		}
+		unixForceQuit(cfg)
 	}
 
 	for i := 0; i < 30; i++ {
@@ -108,24 +101,10 @@ func (p *Platform) IsRunning() bool {
 
 	switch runtime.GOOS {
 	case "windows":
-		if cfg.WindowsExe == "" {
-			return false
-		}
-		out, err := exec.Command("tasklist", "/FI", "IMAGENAME eq "+cfg.WindowsExe).Output()
-		return err == nil && strings.Contains(string(out), cfg.WindowsExe)
+		return windowsIsRunning(cfg)
 	default:
-		if cfg.PgrepMatch != "" {
-			out, err := exec.Command("pgrep", "-f", cfg.PgrepMatch).Output()
-			return err == nil && strings.TrimSpace(string(out)) != ""
-		}
-		for _, name := range cfg.KillNames {
-			out, err := exec.Command("pgrep", "-x", name).Output()
-			if err == nil && strings.TrimSpace(string(out)) != "" {
-				return true
-			}
-		}
+		return unixIsRunning(cfg)
 	}
-	return false
 }
 
 func cursorPlatform() *Platform {
@@ -140,19 +119,7 @@ func cursorPlatform() *Platform {
 			EmailKey:     "cursorAuth/cachedEmail",
 			PlatformName: "Cursor",
 		}),
-		Process: &ProcessConfig{
-			DisplayName: "Cursor",
-			AppPath:     cursorAppPath,
-			KillNames: []string{
-				"Cursor",
-				"Cursor Helper",
-				"Cursor Helper (Renderer)",
-				"Cursor Helper (GPU)",
-				"Cursor Helper (Plugin)",
-			},
-			PgrepMatch: "Cursor",
-			WindowsExe: "Cursor.exe",
-		},
+		Process: cursorProcessConfig(),
 	}
 }
 
@@ -211,9 +178,9 @@ func grokAuthPath() string {
 
 func vscodePlatform() *Platform {
 	vscdb := auth.NewVSCDB(auth.VSCDBConfig{
-		DBPath:      vscodeStateDBPath,
-		KeyPatterns: []string{"%github%", "secret://%GitHub%", "secret://%github%"},
-		RequiredKey: "",
+		DBPath:       vscodeStateDBPath,
+		KeyPatterns:  []string{"%github%", "secret://%GitHub%", "secret://%github%"},
+		RequiredKey:  "",
 		PlatformName: "VS Code",
 	})
 	specs := []auth.KeychainSpec{}
@@ -227,7 +194,7 @@ func vscodePlatform() *Platform {
 		ID:          VSCode,
 		Name:        "VS Code",
 		Description: "VS Code / GitHub Copilot auth (state.vscdb + keychain)",
-		Auth: auth.NewNamedComposite("VS Code", vscdb, specs),
+		Auth:        auth.NewNamedComposite("VS Code", vscdb, specs),
 		Process: &ProcessConfig{
 			DisplayName: "Visual Studio Code",
 			AppPath:     vscodeAppPath,
