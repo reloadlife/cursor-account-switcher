@@ -10,7 +10,35 @@ import (
 
 type StepFn func(label string)
 
-func SwitchTo(id paths.AccountID, onStep StepFn) error {
+type SwitchOptions struct {
+	NoStart bool
+}
+
+type appStarter interface {
+	NeedsRestart() bool
+	Start() error
+	AppName() string
+}
+
+func startAppIfNeeded(p appStarter, opts SwitchOptions, step StepFn) error {
+	if !p.NeedsRestart() || opts.NoStart {
+		return nil
+	}
+	if step != nil {
+		step(fmt.Sprintf("Starting %s...", p.AppName()))
+	}
+	return p.Start()
+}
+
+type platformStarter struct {
+	p *platform.Platform
+}
+
+func (ps platformStarter) NeedsRestart() bool { return ps.p.NeedsRestart() }
+func (ps platformStarter) Start() error       { return ps.p.Start() }
+func (ps platformStarter) AppName() string    { return ps.p.Name }
+
+func SwitchTo(id paths.AccountID, opts SwitchOptions, onStep StepFn) error {
 	step := func(label string) {
 		if onStep != nil {
 			onStep(label)
@@ -45,11 +73,8 @@ func SwitchTo(id paths.AccountID, onStep StepFn) error {
 			return err
 		}
 
-		if p.NeedsRestart() {
-			step(fmt.Sprintf("Starting %s...", p.Name))
-			if err := p.Start(); err != nil {
-				return err
-			}
+		if err := startAppIfNeeded(platformStarter{p}, opts, step); err != nil {
+			return err
 		}
 
 		step(fmt.Sprintf(
@@ -95,11 +120,8 @@ func SwitchTo(id paths.AccountID, onStep StepFn) error {
 		identifier = *restored.Email
 	}
 
-	if p.NeedsRestart() {
-		step(fmt.Sprintf("Starting %s...", p.Name))
-		if err := p.Start(); err != nil {
-			return err
-		}
+	if err := startAppIfNeeded(platformStarter{p}, opts, step); err != nil {
+		return err
 	}
 
 	step(fmt.Sprintf("Switched to %s (%s)", profiles.AccountLabel(id), identifier))

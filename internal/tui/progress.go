@@ -31,12 +31,12 @@ type switchFinishedMsg struct {
 	err error
 }
 
-func RunSwitch(id paths.AccountID) error {
+func RunSwitch(id paths.AccountID, opts app.SwitchOptions) error {
 	stepCh := make(chan string, 16)
 	doneCh := make(chan error, 1)
 
 	go func() {
-		doneCh <- app.SwitchTo(id, func(label string) {
+		doneCh <- app.SwitchTo(id, opts, func(label string) {
 			stepCh <- label
 		})
 		close(stepCh)

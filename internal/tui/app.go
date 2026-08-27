@@ -44,10 +44,10 @@ type appModel struct {
 	input   textinput.Model
 	spinner spinner.Model
 
-	switchStep  string
-	switchErr   error
-	switchAcct  paths.AccountID
-	switchPlat  platform.ID
+	switchStep string
+	switchErr  error
+	switchAcct paths.AccountID
+	switchPlat platform.ID
 
 	noticeTitle string
 	noticeBody  string
@@ -377,7 +377,7 @@ func (m appModel) startSwitch() (tea.Model, tea.Cmd) {
 
 	go func() {
 		err := profiles.WithPlatform(plat.ID, func() error {
-			return app.SwitchTo(acct.ID, func(label string) {
+			return app.SwitchTo(acct.ID, app.SwitchOptions{}, func(label string) {
 				stepCh <- label
 			})
 		})
